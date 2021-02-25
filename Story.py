@@ -1,13 +1,13 @@
+from . import exceptions
 import cloudscraper
 from bs4 import BeautifulSoup
-import exceptions as exceptions
 import datetime
 import time
 import re
 
 
 class Story:
-    def __init__(self, link):
+    def __init__(self, link, rate_limit=0):
         self.soup = None
         self.id = 0
         self.scraper = cloudscraper.CloudScraper(browser={
@@ -18,7 +18,7 @@ class Story:
         })
         self.metadata = None
         if True:
-            _soup = self.requester(link, 0)
+            _soup = self.requester(link, rate_limit)
             metadataRaw = _soup.find("span", {"class": "xgray xcontrast_txt"})
             self.metadata = str(metadataRaw).split(" - ")
             self.soup = _soup
@@ -99,7 +99,11 @@ class Story:
         Returns:
             authors (string): The story's authors
         """
-        href = self.soup.find_all("a", {"class": "xcontrast_txt"})[2]["href"]
+        hrefList = self.soup.find_all("a", {"class": "xcontrast_txt"})
+        if "/u/" in str(hrefList[1]):
+            href = hrefList[1]["href"].replace("-", " ")
+        else:
+            href = hrefList[2]["href"].replace("-", " ")
         return f"https://www.fanfiction.net{href}"
 
     def fandoms(self):
@@ -168,6 +172,8 @@ class Story:
         """
         index = 5
         if self.oneshot():
+            index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
             index -= 1
         wordCount = self.metadata[index][7:]
         return int(wordCount.replace(",", ""))
@@ -242,6 +248,8 @@ class Story:
         index = 7
         if self.oneshot():
             index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
+            index -= 1
         return str(self.metadata[index])[6:]
 
     def follows(self):
@@ -254,6 +262,8 @@ class Story:
         index = 8
         if self.oneshot():
             index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
+            index -= 1
         return str(self.metadata[index])[9:]
 
     def lastUpdated(self):
@@ -265,6 +275,8 @@ class Story:
         """
         index = 9
         if self.oneshot():
+            index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
             index -= 1
         rawHTML = self.metadata[index]
         rawDate = rawHTML.split(">")[1].split("<")[0]
@@ -281,6 +293,8 @@ class Story:
         index = 10
         if self.oneshot():
             index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
+            index -= 1
         rawHTML = self.metadata[index]
         rawDate = rawHTML.split(">")[1].split("<")[0]
         splitDate = rawDate.split("/")
@@ -295,6 +309,8 @@ class Story:
         """
         index = 11
         if self.oneshot():
+            index -= 1
+        if "Words" in self.relationships() or "Chapters" in self.relationships():
             index -= 1
         return self.metadata[index][8:]
 
