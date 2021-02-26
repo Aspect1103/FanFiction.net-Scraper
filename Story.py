@@ -20,7 +20,7 @@ class Story:
         if True:
             _soup = self.requester(link, rate_limit)
             metadataRaw = _soup.find("span", {"class": "xgray xcontrast_txt"})
-            self.metadata = str(metadataRaw).split(" - ")
+            self.metadata = self.metadataAssign(str(metadataRaw).split(" - "))
             self.soup = _soup
 
     def requester(self, link, rate_limit):
@@ -68,6 +68,49 @@ class Story:
         for split in splitted:
             if split.isdigit():
                 return split
+
+    def metadataAssign(self, details):
+        final = {
+            "rating": None,
+            "language": None,
+            "genre": None,
+            "relationships": None,
+            "chapters": None,
+            "words": None,
+            "favourites": None,
+            "follows": None,
+            "lastUpdated": None,
+            "published": None,
+            "status": None
+        }
+        for count in range(len(details)):
+            if "rating" in details[count]:
+                final["rating"] = BeautifulSoup(details[count], features="lxml").find("a").text
+            elif "Chapters" in details[count]:
+                final["chapters"] = int(details[count][9:])
+            elif "Words" in details[count]:
+                final["words"] = int(details[count][7:].replace(",", ""))
+            elif "Favs" in details[count]:
+                final["favourites"] = int(details[count][6:])
+            elif "Follows" in details[count]:
+                final["follows"] = int(details[count][9:])
+            elif "Updated" in details[count]:
+                rawDate = details[count].split(">")[1].split("<")[0]
+                splitDate = rawDate.split("/")
+                final["lastUpdated"] = datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+            elif "Published" in details[count]:
+                rawDate = details[count].split(">")[1].split("<")[0]
+                splitDate = rawDate.split("/")
+                final["published"] = datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+            elif "Status" in details[count]:
+                final["status"] = details[count][8:]
+        final["language"] = details[1]
+        final["genre"] = details[2]
+        if final["chapters"] == None:
+            final["chapters"] = 1
+        if not ("Chapters" in details[3] or "Words" in details[3]):
+            final["relationships"] = details[3]
+        return final
 
     def oneshot(self):
         """
@@ -122,8 +165,7 @@ class Story:
         Returns:
             rating (string): A story's rating
         """
-        rating = BeautifulSoup(self.metadata[0], features="lxml")
-        return rating.find("a").text
+        return self.metadata["rating"]
 
     def language(self):
         """
@@ -132,7 +174,7 @@ class Story:
         Returns:
             language (string): A story's language
         """
-        return self.metadata[1]
+        return self.metadata["language"]
 
     def genre(self):
         """
@@ -141,7 +183,7 @@ class Story:
         Returns:
             genre (string): A story's genre
         """
-        return self.metadata[2]
+        return self.metadata["genre"]
 
     def relationships(self):
         """
@@ -150,7 +192,7 @@ class Story:
         Returns:
             relationships (string): A story's relationships
         """
-        return self.metadata[3]
+        return self.metadata["relationships"]
 
     def chapters(self):
         """
@@ -159,9 +201,7 @@ class Story:
         Returns:
             chapters (int): A story's chapter count
         """
-        if self.oneshot():
-            return 1
-        return int(self.metadata[4][9:])
+        return self.metadata["chapters"]
 
     def words(self):
         """
@@ -170,13 +210,7 @@ class Story:
         Returns:
             words (int): A story's word count
         """
-        index = 5
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        wordCount = self.metadata[index][7:]
-        return int(wordCount.replace(",", ""))
+        return self.metadata["words"]
 
     def reviews(self, chapter=0):
         """
@@ -245,12 +279,7 @@ class Story:
         Returns:
             favourites (int): How many favourites a story has
         """
-        index = 7
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        return str(self.metadata[index])[6:]
+        return self.metadata["favourites"]
 
     def follows(self):
         """
@@ -259,12 +288,7 @@ class Story:
         Returns:
             follows (int): How many follows a story has
         """
-        index = 8
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        return str(self.metadata[index])[9:]
+        return self.metadata["follows"]
 
     def lastUpdated(self):
         """
@@ -273,15 +297,7 @@ class Story:
         Returns:
             lastUpdated (datetime): When a story was last updated
         """
-        index = 9
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        rawHTML = self.metadata[index]
-        rawDate = rawHTML.split(">")[1].split("<")[0]
-        splitDate = rawDate.split("/")
-        return datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+        return self.metadata["lastUpdated"]
 
     def published(self):
         """
@@ -290,15 +306,7 @@ class Story:
         Returns:
             published (datetime): When a story was published
         """
-        index = 10
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        rawHTML = self.metadata[index]
-        rawDate = rawHTML.split(">")[1].split("<")[0]
-        splitDate = rawDate.split("/")
-        return datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+        return self.metadata["published"]
 
     def status(self):
         """
@@ -307,12 +315,7 @@ class Story:
         Returns:
             status (string): A story's status
         """
-        index = 11
-        if self.oneshot():
-            index -= 1
-        if "Words" in self.relationships() or "Chapters" in self.relationships():
-            index -= 1
-        return self.metadata[index][8:]
+        return self.metadata["status"]
 
     def getChapterText(self, chapter, rate_limit=0):
         """
