@@ -8,26 +8,27 @@ import re
 
 class Story:
     def __init__(self, link, rate_limit=0):
-        self.soup = None
+        self._soup = None
         self.id = 0
-        self.scraper = cloudscraper.CloudScraper(browser={
+        self._scraper = cloudscraper.CloudScraper(browser={
             "browser": "chrome",
             "platform": "windows",
             "mobile": False,
             "desktop": True
         })
-        self.metadata = None
+        self._metadata = None
         if True:
-            _soup = self.requester(link, rate_limit)
-            metadataRaw = _soup.find("span", {"class": "xgray xcontrast_txt"})
-            self.metadata = self.metadataAssign(str(metadataRaw).split(" - "))
-            self.soup = _soup
+            soup = self._requester(link, rate_limit)
+            metadataRaw = soup.find("span", {"class": "xgray xcontrast_txt"})
+            self.metadata = self._metadataAssign(str(metadataRaw).split(" - "))
+            self._soup = soup
 
-    def requester(self, link, rate_limit):
+    def _requester(self, link, rate_limit):
         """
         Function to request a story's webpage
 
         Parameters:
+            link (str): The link to be requested
             rate_limit (int): How long between each request
 
         Raises:
@@ -37,16 +38,15 @@ class Story:
         Returns:
             tempSoup (BeautifulSoup object): The story's webpage
         """
-        self.id = self.getID(link)
+        self.id = self._getID(link)
         if self.id == None:
             raise exceptions.FFInvalidLink("Link is invalid")
         else:
             time.sleep(rate_limit)
             try:
-                request = self.scraper.get(link)
+                request = self._scraper.get(link)
             except cloudscraper.exceptions.CloudflareChallengeError:
-                raise exceptions.CloudflareError("A Cloudflare version 2 has been detected."
-                                                 " Please try again in a little while")
+                raise exceptions.CloudflareError("A Cloudflare version 2 check has been detected. Please try again in a little while")
             tempSoup = BeautifulSoup(request.text, features="lxml")
             invalidStory = tempSoup.find("span", {"class": "gui_warning"})
             if invalidStory != None:
@@ -54,7 +54,7 @@ class Story:
             else:
                 return tempSoup
 
-    def getID(self, link):
+    def _getID(self, link):
         """
         Function to return a story's id
 
@@ -69,7 +69,7 @@ class Story:
             if split.isdigit():
                 return split
 
-    def metadataAssign(self, details):
+    def _metadataAssign(self, details):
         final = {
             "rating": None,
             "language": None,
@@ -119,7 +119,7 @@ class Story:
         Returns:
             oneshot (boolean): True if the story is a oneshot or false if it is not
         """
-        request = self.requester(f"https://www.fanfiction.net/s/{self.id}/2", 0)
+        request = self._requester(f"https://www.fanfiction.net/s/{self.id}/2", 0)
         try:
             oneshotTest = request.find("span", {"class": "gui_normal"}).text
             return True
@@ -133,7 +133,7 @@ class Story:
         Returns:
             title (string): A story's title
         """
-        return self.soup.find("b", {"class": "xcontrast_txt"}).text
+        return self._soup.find("b", {"class": "xcontrast_txt"}).text
 
     def authors(self):
         """
@@ -142,7 +142,7 @@ class Story:
         Returns:
             authors (string): The story's authors
         """
-        hrefList = self.soup.find_all("a", {"class": "xcontrast_txt"})
+        hrefList = self._soup.find_all("a", {"class": "xcontrast_txt"})
         if "/u/" in str(hrefList[1]):
             href = hrefList[1]["href"].replace("-", " ")
         else:
@@ -156,7 +156,7 @@ class Story:
         Returns:
             fandom (string): The story's fandom
         """
-        return self.soup.find_all("a", {"class": "xcontrast_txt"})[1].text
+        return self._soup.find_all("a", {"class": "xcontrast_txt"})[1].text
 
     def rating(self):
         """
@@ -230,7 +230,7 @@ class Story:
             raise exceptions.InvalidChapterID(f"{chapter} is not a valid chapter")
         reviewFinal = []
         retries = 5
-        reviews = self.requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/", 0)
+        reviews = self._requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/", 0)
         try:
             maxPage = int(reviews.find_all("a")[121]["href"].split("/")[4])
         except IndexError:
@@ -239,7 +239,7 @@ class Story:
             if page > 0:
                 try:
                     if retries > 0:
-                        reviews = self.requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/{page}", 2)
+                        reviews = self._requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/{page}", 2)
                 except cloudscraper.exceptions.CloudflareChallengeError:
                     retries -= 1
                     continue
@@ -267,7 +267,7 @@ class Story:
                         username,
                         chapterDateSplit[0][8:],
                         datePosted,
-                        [self.cleaner(soup.find("div").text)]
+                        [self._cleaner(soup.find("div").text)]
                     ]
                     reviewFinal.append(result)
         return reviewFinal
@@ -337,14 +337,14 @@ class Story:
         while True:
             try:
                 if retries > 0:
-                    soup = self.requester(f"https://www.fanfiction.net/s/{self.id}/{chapter}", rate_limit)
+                    soup = self._requester(f"https://www.fanfiction.net/s/{self.id}/{chapter}", rate_limit)
                     break
             except cloudscraper.exceptions.CloudflareChallengeError:
                 retries -= 1
                 continue
         textList = str(soup.find_all("div", {"class": "storytext xcontrast_txt nocopy"})).split("</p><p>")
         for text in textList:
-            chapterText.append(self.cleaner(text))
+            chapterText.append(self._cleaner(text))
         return chapterText
 
     def getStoryText(self):
@@ -362,7 +362,7 @@ class Story:
                 storyText.append(self.getChapterText(chapter+1, 2))
             return storyText
 
-    def cleaner(self, htmlString):
+    def _cleaner(self, htmlString):
         """
         Function to remove all HTML tags from a string
 
