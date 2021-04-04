@@ -1,4 +1,4 @@
-from . import exceptions
+from . import utils
 import cloudscraper
 from bs4 import BeautifulSoup
 import datetime
@@ -7,21 +7,36 @@ import re
 
 
 class Story:
-    def __init__(self, link, rate_limit=0):
+    def __init__(self, link, rate_limit=0, loaded=True):
         self._soup = None
-        self.id = 0
+        self._rate_limit = rate_limit
+        self._loaded = False
         self._scraper = cloudscraper.CloudScraper(browser={
             "browser": "chrome",
             "platform": "windows",
             "mobile": False,
             "desktop": True
         })
+        self._id = self.getID(link)
+        self._link = f"https://www.fanfiction.net/s/{self._id}"
         self._metadata = None
-        if True:
-            soup = self._requester(link, rate_limit)
-            metadataRaw = soup.find("span", {"class": "xgray xcontrast_txt"})
-            self.metadata = self._metadataAssign(str(metadataRaw).split(" - "))
-            self._soup = soup
+        if loaded:
+            self.update()
+
+    def __repr__(self):
+        return f"<Story({self._id})>"
+
+
+    def update(self):
+        """
+        Function to update the metadata and soup for a story
+        """
+        soup = self._requester(self._link, self._rate_limit)
+        metadataRaw = soup.find("span", {"class": "xgray xcontrast_txt"})
+        self._metadata = self._metadataAssign(str(metadataRaw).split(" - "))
+        self._soup = soup
+        self._loaded = True
+
 
     def _requester(self, link, rate_limit):
         """
@@ -38,23 +53,22 @@ class Story:
         Returns:
             tempSoup (BeautifulSoup object): The story's webpage
         """
-        self.id = self._getID(link)
-        if self.id == None:
-            raise exceptions.FFInvalidLink("Link is invalid")
+        if self._id == None:
+            raise utils.FFInvalidLink("Link is invalid")
         else:
             time.sleep(rate_limit)
             try:
                 request = self._scraper.get(link)
             except cloudscraper.exceptions.CloudflareChallengeError:
-                raise exceptions.CloudflareError("A Cloudflare version 2 check has been detected. Please try again in a little while")
+                raise utils.CloudflareError("A Cloudflare version 2 check has been detected. Please try again in a little while")
             tempSoup = BeautifulSoup(request.text, features="lxml")
             invalidStory = tempSoup.find("span", {"class": "gui_warning"})
             if invalidStory != None:
-                raise exceptions.FFInvalidLink("Link is invalid")
+                raise utils.FFInvalidLink("Link is invalid")
             else:
                 return tempSoup
 
-    def _getID(self, link):
+    def getID(self, link):
         """
         Function to return a story's id
 
@@ -91,17 +105,15 @@ class Story:
             elif "Words" in details[count]:
                 final["words"] = int(details[count][7:].replace(",", ""))
             elif "Favs" in details[count]:
-                final["favourites"] = int(details[count][6:])
+                final["favourites"] = int(details[count][6:].replace(",", ""))
             elif "Follows" in details[count]:
-                final["follows"] = int(details[count][9:])
+                final["follows"] = int(details[count][9:].replace(",", ""))
             elif "Updated" in details[count]:
-                rawDate = details[count].split(">")[1].split("<")[0]
-                splitDate = rawDate.split("/")
-                final["lastUpdated"] = datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+                timestamp = details[count].split('"')[1]
+                final["lastUpdated"] = datetime.date.fromtimestamp(int(timestamp))
             elif "Published" in details[count]:
-                rawDate = details[count].split(">")[1].split("<")[0]
-                splitDate = rawDate.split("/")
-                final["published"] = datetime.date(day=int(splitDate[1]), month=int(splitDate[0]), year=int(splitDate[2]))
+                timestamp = details[count].split('"')[1]
+                final["published"] = datetime.date.fromtimestamp(int(timestamp))
             elif "Status" in details[count]:
                 final["status"] = details[count][8:]
         final["language"] = details[1]
@@ -116,10 +128,16 @@ class Story:
         """
         Function to return if a story is a oneshot or not
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             oneshot (boolean): True if the story is a oneshot or false if it is not
         """
-        request = self._requester(f"https://www.fanfiction.net/s/{self.id}/2", 0)
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        request = self._requester(f"https://www.fanfiction.net/s/{self._id}/2", 0)
         try:
             oneshotTest = request.find("span", {"class": "gui_normal"}).text
             return True
@@ -130,18 +148,30 @@ class Story:
         """
         Function to return a story's title
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             title (string): A story's title
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         return self._soup.find("b", {"class": "xcontrast_txt"}).text
 
     def authors(self):
         """
         Function to return a story's authors
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             authors (string): The story's authors
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         hrefList = self._soup.find_all("a", {"class": "xcontrast_txt"})
         if "/u/" in str(hrefList[1]):
             href = hrefList[1]["href"].replace("-", " ")
@@ -153,64 +183,106 @@ class Story:
         """
         Function to return a story's fandom
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             fandom (string): The story's fandom
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         return self._soup.find_all("a", {"class": "xcontrast_txt"})[1].text
 
     def rating(self):
         """
         Function to return a story's rating
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             rating (string): A story's rating
         """
-        return self.metadata["rating"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["rating"]
 
     def language(self):
         """
         Function to return a story's language
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             language (string): A story's language
         """
-        return self.metadata["language"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["language"]
 
     def genre(self):
         """
         Function to return a story's genre
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             genre (string): A story's genre
         """
-        return self.metadata["genre"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["genre"]
 
     def relationships(self):
         """
         Function to return a story's relationships
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             relationships (string): A story's relationships
         """
-        return self.metadata["relationships"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["relationships"]
 
     def chapters(self):
         """
         Function to return a story's chapter count
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             chapters (int): A story's chapter count
         """
-        return self.metadata["chapters"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["chapters"]
 
     def words(self):
         """
         Function to return a story's word count
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             words (int): A story's word count
         """
-        return self.metadata["words"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["words"]
 
     def reviews(self, chapter=0):
         """
@@ -221,16 +293,20 @@ class Story:
 
         Raises:
             exceptions.InvalidChapterID: Invalid chapter number
+            exceptions.WorkNotLoaded: Work is not loaded
 
         Returns:
             reviews (2D array): A story's reviews. Each individual array is in the format:
                 [Username, chapter number, date, review text]
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         if chapter < 0 or chapter > self.chapters():
-            raise exceptions.InvalidChapterID(f"{chapter} is not a valid chapter")
+            raise utils.InvalidChapterID(f"{chapter} is not a valid chapter")
         reviewFinal = []
         retries = 5
-        reviews = self._requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/", 0)
+        reviews = self._requester(f"https://www.fanfiction.net/r/{self._id}/{chapter}/", 0)
         try:
             maxPage = int(reviews.find_all("a")[121]["href"].split("/")[4])
         except IndexError:
@@ -239,7 +315,7 @@ class Story:
             if page > 0:
                 try:
                     if retries > 0:
-                        reviews = self._requester(f"https://www.fanfiction.net/r/{self.id}/{chapter}/{page}", 2)
+                        reviews = self._requester(f"https://www.fanfiction.net/r/{self._id}/{chapter}/{page}", 2)
                 except cloudscraper.exceptions.CloudflareChallengeError:
                     retries -= 1
                     continue
@@ -276,46 +352,76 @@ class Story:
         """
         Function to return how many favourites a story has
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             favourites (int): How many favourites a story has
         """
-        return self.metadata["favourites"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["favourites"]
 
     def follows(self):
         """
         Function to return how many follows a story has
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             follows (int): How many follows a story has
         """
-        return self.metadata["follows"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["follows"]
 
     def lastUpdated(self):
         """
         Function to return when a story was last updated
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             lastUpdated (datetime): When a story was last updated
         """
-        return self.metadata["lastUpdated"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["lastUpdated"]
 
     def published(self):
         """
         Function to return when a story was published
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             published (datetime): When a story was published
         """
-        return self.metadata["published"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["published"]
 
     def status(self):
         """
         Function to return a story's status
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             status (string): A story's status
         """
-        return self.metadata["status"]
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
+        return self._metadata["status"]
 
     def getChapterText(self, chapter, rate_limit=0):
         """
@@ -326,18 +432,22 @@ class Story:
 
         Raises:
             exceptions.InvalidChapterID: Invalid chapter number
+            exceptions.WorkNotLoaded: Work is not loaded
 
         Returns:
             chapterText (array): A chapter's text
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         chapterText = []
         retries = 5
         if chapter < 1 or chapter > self.chapters():
-            raise exceptions.InvalidChapterID(f"{chapter} is not a valid chapter")
+            raise utils.InvalidChapterID(f"{chapter} is not a valid chapter")
         while True:
             try:
                 if retries > 0:
-                    soup = self._requester(f"https://www.fanfiction.net/s/{self.id}/{chapter}", rate_limit)
+                    soup = self._requester(f"https://www.fanfiction.net/s/{self._}/{chapter}", rate_limit)
                     break
             except cloudscraper.exceptions.CloudflareChallengeError:
                 retries -= 1
@@ -351,9 +461,15 @@ class Story:
         """
         Function to request a story's entire text
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             storyText (2D array): A story's text
         """
+        if not self._loaded:
+            raise utils.WorkNotLoaded("Story is not loaded. Call story.update()")
+
         if self.oneshot():
             return self.getChapterText(1, 2)
         else:
@@ -369,9 +485,24 @@ class Story:
         Parameters:
             htmlString (string): The HTML string
 
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
         Returns:
             cleanedHTML (string): The cleaned HTML string
         """
         removedBrackets = htmlString.replace("[", "").replace("]", "")
         removedHTML = re.sub(r"<.*?>", '', removedBrackets)
         return re.sub(r"\n", '', removedHTML)
+
+    def getLink(self):
+        """
+        Function to return a story's url
+
+        Raises:
+            exceptions.WorkNotLoaded: Work is not loaded
+
+        Returns:
+            link (str): A story's url
+        """
+        return self._link
